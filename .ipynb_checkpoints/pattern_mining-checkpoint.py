@@ -8,12 +8,43 @@ warnings.filterwarnings(action="ignore")
 
 
 class Binner():
+    """Turn continuous data into discrete data using KMeans and find patterns in subset of data above a threshold using FP Growth
+    Attributes
+    ----------
+    models_ : dictionary, (column name -> model)
+        Dictionary mapping a column to a KMeans model
+    number_of_bins_range_ : tuple, 
+        The range of values for number of bins to try, the algorithm will automatically 
+        select the best one from the range (default: (2,10)).
+        Labels of each point
+    minimal_support_rate_ : float
+        A float between 0 and 1 for minimum support of the itemsets returned
+    threshold_ : float
+        The threshold to use for the conditon: support_rate(full data) * threshold < support_rate(subset)
+        
+    Notes
+    -----
+    This class has many helper functions, which can be used out of the box as well. You can create bins for a single column using `create_bins` and 
+    find patterns for a dataset using `find_patterns`. The main function is `get_best_subset_patterns`, which finds the best patterns in a subset 
+    of data when compared to the full dataset using support rates. The groups for the different binned columns can be accessed from self.models_
+    
+    Examples
+    --------
+    >>> import seaborn as sns
+    >>> iris = sns.load_dataset('iris')
+    >>> titanic = sns.load_dataset('titanic')
+    >>> binner = Binner()
+    >>> binned_values_iris_petal_length = binner.create_bins('petal_length', iris, number_of_bins_range=(2,10), verbose=True)
+    >>> subset_patterns_iris = binner.find_patterns(iris[iris['sepal_length'] > 4.7], minimal_support_rate=.25, number_of_bins_range=(2,10), verbose=True)
+    >>> subset_key_patterns_titanic = binner.get_best_subset_patterns(full_df=titanic, subset_df=titanic[titanic['fare'] > 30], 
+                                                      minimal_support_rate=.3, threshold=3.8, number_of_bins_range=(2,10))
+    """
     
     def __init__(self):
-        self.models = {}
-        self.number_of_bins_range = (2,10)
-        self.minimal_support_rate = .25
-        self.threshold = 1.0
+        self.models_ = {}
+        self.number_of_bins_range_ = (2,10)
+        self.minimal_support_rate_ = .25
+        self.threshold_ = 1.0
         
     def sort_model_labels(self, model, original_labels):
         """Sorts labels in ascending order (cluster means) using a fit KMeans model
@@ -33,7 +64,8 @@ class Binner():
         return sorted_labels
         
     def create_bins(self, column_name, df, number_of_bins_range=(2,10), replace_in_df=True, verbose=False):
-        """An adaptive binning algorithm to convert a continuous pandas dataframe column to discrete. K means algorithm is used to create bins. Mean sum of squared distances to center is used for evaluation. Knee point detection algorithm is used to select the best number of bins.
+        """An adaptive binning algorithm to convert a continuous pandas dataframe column to discrete. K means algorithm is used to create bins. 
+        Mean sum of squared distances to center is used for evaluation. Knee point detection algorithm is used to select the best number of bins.
         Parameters
         ----------
         column_name : the name of pandas dataframe column to convert
@@ -50,7 +82,7 @@ class Binner():
         the binned values 
         """
         # Assign value to class variable
-        self.number_of_bins_range = number_of_bins_range
+        self.number_of_bins_range_ = number_of_bins_range
         
         # Format data
         data_to_bin = np.array(df[column_name]).reshape(-1, 1)
@@ -69,7 +101,7 @@ class Binner():
         model.labels_ = self.sort_model_labels(model, model.labels_)
         
         # Add model to class variable for all models
-        self.models[column_name] = model
+        self.models_[column_name] = model
         
         # Replace the numeric column with the discrete values
         if replace_in_df:
@@ -99,10 +131,10 @@ class Binner():
         all patterns found above minimal support rate
         """
         # Reinitialize class models
-        self.models = {}
+        self.models_ = {}
         
         # Assign value to class variable
-        self.minimal_support_rate = minimal_support_rate
+        self.minimal_support_rate_ = minimal_support_rate
         
         # Iterate over each column in the dataset
         for column in df.columns:
@@ -143,10 +175,10 @@ class Binner():
         for column in df.columns:
             
             # If column has been turned into a discrete column already (if there is a saved model for it)
-            if column in self.models:
+            if column in self.models_:
                 
                 # Get the model for the column
-                model = self.models[column]
+                model = self.models_[column]
                 
                 # Get the discrete values using the model on the new data
                 predicted_labels = model.predict(np.array(df[column]).reshape(-1,1))
@@ -212,7 +244,7 @@ class Binner():
         a dataframe with all the patterns that exceed the threshold equation for subset vs full dataset support rate
         """
         # Assign value to class variable
-        self.threshold = threshold
+        self.threshold_ = threshold
         
         # Find all patterns above support rate in subset dataframe
         subset_patterns = self.find_patterns(subset_df, minimal_support_rate=minimal_support_rate, number_of_bins_range=number_of_bins_range, verbose=verbose)
